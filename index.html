@@ -50,7 +50,7 @@
 
         <div class="loader" id="loader">
             <div class="spinner"></div>
-            Обработка нейросетью...
+            Нейросеть обрабатывает фото...
         </div>
 
         <button class="action-btn" id="sendBtn" style="display: none;" onclick="sendToAI()">Запустить ИИ</button>
@@ -63,6 +63,9 @@
     <script>
         let currentMode = 'moon';
         let selectedFile = null;
+        
+        // твой токен от fal.ai
+        const FAL_KEY = "fal_sk_8ae675c272554e04b374032f38cc1be1:cb8a721d95a632ce5d8b0e876826e001";
 
         function setMode(mode, btn) {
             currentMode = mode;
@@ -78,23 +81,63 @@
             }
         }
 
-        function sendToAI() {
+        // Функция конвертации файла в base64 для отправки
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        async function sendToAI() {
             if (!selectedFile) return;
 
             document.getElementById('loader').style.display = 'block';
             document.getElementById('sendBtn').style.display = 'none';
 
-            setTimeout(() => {
-                document.getElementById('loader').style.display = 'none';
+            try {
+                // 1. Переводим фото в base64
+                const base64Image = await fileToBase64(selectedFile);
+
+                // Выбираем модель в зависимости от режима:
+                // Для предметов возьмем универсальный апскейлер/улучшайзер, для луны — можно настроить свой эндпоинт
+                const modelId = currentMode === 'moon' 
+                    ? "fal-ai/creative-upscaler" // модель для детализации и апскейла
+                    : "fal-ai/bria/background-remove"; // например, удаление фона или обработка предметов
+
+                // 2. Отправляем запрос на fal.ai API
+                const response = await fetch(`https://fal.run/${modelId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Key ${FAL_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        image_url: base64Image,
+                        prompt: currentMode === 'moon' ? "detailed moon craters, high resolution, 8k" : "high quality product shot"
+                    })
+                });
+
+                const data = await response.json();
                 
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    document.getElementById('resultImg').src = e.target.result;
+                document.getElementById('loader').style.display = 'none';
+
+                // 3. Получаем результат от нейросети
+                if (data.image && data.image.url) {
+                    document.getElementById('resultImg').src = data.image.url;
                     document.getElementById('resultBox').style.display = 'block';
-                    console.log("Режим отправки:", currentMode);
+                } else {
+                    alert('Ошибка обработки: ' + JSON.stringify(data));
+                    document.getElementById('sendBtn').style.display = 'block';
                 }
-                reader.readAsDataURL(selectedFile);
-            }, 2000);
+
+            } catch (error) {
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('sendBtn').style.display = 'block';
+                alert('Ошибка соединения: ' + error.message);
+            }
         }
     </script>
 </body>
